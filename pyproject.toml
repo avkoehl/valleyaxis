@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "valleyaxis"
+version = "0.1.0"
+description = "extract centerlines for a valley network"
+authors = ["Arthur Koehl <avkoehl@ucdavis.edu>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+shapely = "^2.0.7"
+geopandas = "^1.0.1"
+scipy = "^1.15.1"
+tqdm = "^4.67.1"
+networkx = "^3.4.2"
+numba = "^0.61.0"
+numpy = "<2.2"
+rasterio = "^1.4.3"
+rioxarray = "^0.18.2"
+
+
+[tool.poetry.group.dev.dependencies]
+matplotlib = "^3.10.0"
+ipython = "^8.32.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
