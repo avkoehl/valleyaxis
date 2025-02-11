@@ -5,7 +5,7 @@ import xarray as xr
 import rioxarray
 from rasterio import features
 from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import shortest_path
+from scipy.sparse.csgraph import dijkstra
 from shapely.geometry import LineString, Point
 
 
@@ -62,7 +62,7 @@ class Surface:
         target_nodes = [self.node_ids[px[0], px[1]] for px in target_px]
 
         # Calculate shortest path
-        distances, predecessors = shortest_path(
+        distances, predecessors = dijkstra(
             csgraph=self.graph,
             directed=True,
             indices=input_nodes,
@@ -76,30 +76,28 @@ class Surface:
         min_input_idx, min_target_idx = divmod(target_dists.argmin(), len(target_nodes))
         min_distance = target_dists[min_input_idx, min_target_idx]
 
-        if np.isinf(min_distance):
-            return None, None, None
-        else:
-            # Reconstruct path
-            path_nodes = []
-            current_node = target_nodes[min_target_idx]
-            while current_node != input_nodes[min_input_idx]:
-                if current_node == -9999:
-                    raise ValueError("No valid path exists between the points")
-                path_nodes.append(current_node)
-                # update current node
-                current_node = predecessors[0, current_node]  # TODO: danger!
-            path_nodes.append(input_nodes[min_input_idx])
-            path_nodes.reverse()
+        # reconstruct the shortest path
+        path = self.reconstruct_path(
+            predecessors, input_nodes[min_input_idx], target_nodes[min_target_idx]
+        )
+        return path, min_distance
 
-            # Convert node IDs back to world coordinates
-            path_coords = []
-            for node in path_nodes:
-                px_row, px_col = np.where(self.node_ids == node)
-                world_point = self._pixel_to_world((px_row[0], px_col[0]))
-                path_coords.append(world_point)
+    def reconstruct_path(self, predecessors, source, target):
+        path = []
+        while target != source:
+            path.append(target)
+            target = predecessors[target]
+        path.append(source)
+        path.reverse()
 
-            path = LineString(path_coords)
-            return input_points[min_input_idx], target_points[min_target_idx], path
+        # Convert node IDs back to world coordinates
+        path_coords = []
+        for node in path:
+            px_row, px_col = np.where(self.node_ids == node)
+            world_point = self._pixel_to_world((px_row[0], px_col[0]))
+            path_coords.append(world_point)
+
+        return LineString(path_coords)
 
     def trace_path(self, start_point: Point, end_point: Point) -> LineString:
         """
@@ -121,32 +119,14 @@ class Surface:
         end_node = self.node_ids[end_px[0], end_px[1]]
 
         # Calculate shortest path
-        _, predecessors = djikstra(
+        _, predecessors = dijkstra(
             csgraph=self.graph,
             directed=True,
             indices=start_node,
             return_predecessors=True,
         )
 
-        # Reconstruct path
-        path_nodes = []
-        current_node = end_node
-        while current_node != start_node:
-            if current_node == -9999:  # No path found
-                raise ValueError("No valid path exists between the points")
-            path_nodes.append(current_node)
-            current_node = predecessors[current_node]
-        path_nodes.append(start_node)
-        path_nodes.reverse()
-
-        # Convert node IDs back to world coordinates
-        path_coords = []
-        for node in path_nodes:
-            px_row, px_col = np.where(self.node_ids == node)
-            world_point = self._pixel_to_world((px_row[0], px_col[0]))
-            path_coords.append(world_point)
-
-        return LineString(path_coords)
+        return self.reconstruct_path(predecessors, start_node, end_node)
 
     def _world_to_pixel(self, point: Point) -> tuple:
         """
