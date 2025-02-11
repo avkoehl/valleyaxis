@@ -49,6 +49,58 @@ class Surface:
         # Store node IDs for coordinate conversion
         self.node_ids = np.arange(dem.size).reshape(dem.shape)
 
+    def nearest_points(self, input_points, target_points):
+        """
+        Find the nearest points on the surface between two sets of points.
+        returns the nearest points on the surface for each input and target point and
+        the path between them
+        """
+        # convert input_points and target_points to pixel coordinates
+        input_px = [self._world_to_pixel(p) for p in input_points]
+        target_px = [self._world_to_pixel(p) for p in target_points]
+        input_nodes = [self.node_ids[px[0], px[1]] for px in input_px]
+        target_nodes = [self.node_ids[px[0], px[1]] for px in target_px]
+
+        # Calculate shortest path
+        distances, predecessors = shortest_path(
+            csgraph=self.graph,
+            directed=True,
+            indices=input_nodes,
+            return_predecessors=True,
+        )
+
+        # extract distances to target node_ids
+        target_dists = distances[:, target_nodes]
+
+        # find the minimum distance and keep the indices
+        min_input_idx, min_target_idx = divmod(target_dists.argmin(), len(target_nodes))
+        min_distance = target_dists[min_input_idx, min_target_idx]
+
+        if np.isinf(min_distance):
+            return None, None, None
+        else:
+            # Reconstruct path
+            path_nodes = []
+            current_node = target_nodes[min_target_idx]
+            while current_node != input_nodes[min_input_idx]:
+                if current_node == -9999:
+                    raise ValueError("No valid path exists between the points")
+                path_nodes.append(current_node)
+                # update current node
+                current_node = predecessors[0, current_node]  # TODO: danger!
+            path_nodes.append(input_nodes[min_input_idx])
+            path_nodes.reverse()
+
+            # Convert node IDs back to world coordinates
+            path_coords = []
+            for node in path_nodes:
+                px_row, px_col = np.where(self.node_ids == node)
+                world_point = self._pixel_to_world((px_row[0], px_col[0]))
+                path_coords.append(world_point)
+
+            path = LineString(path_coords)
+            return input_points[min_input_idx], target_points[min_target_idx], path
+
     def trace_path(self, start_point: Point, end_point: Point) -> LineString:
         """
         Find the shortest path between two points over the DEM surface.
@@ -69,7 +121,7 @@ class Surface:
         end_node = self.node_ids[end_px[0], end_px[1]]
 
         # Calculate shortest path
-        _, predecessors = shortest_path(
+        _, predecessors = djikstra(
             csgraph=self.graph,
             directed=True,
             indices=start_node,
@@ -106,8 +158,10 @@ class Surface:
         Returns:
             tuple (row, col) of pixel coordinates
         """
-        row, col = ~self.transform * (point.x, point.y)
-        return (int(row), int(col))
+        col, row = ~self.transform * (point.x, point.y)
+        col = int(round(col))
+        row = int(round(row))
+        return row, col
 
     def _pixel_to_world(self, pixel: tuple) -> tuple:
         """
