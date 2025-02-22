@@ -64,6 +64,6 @@ centerline = valley_centerlines(dem, inlets, outlet, floor)
   - Provide inlet and outlet points directly
   - Or provide flowlines to automatically extract channel heads and outlets
 
-## Citation
+## References
 
 Kienholz, C., Rich, J. L., Arendt, A. A., and Hock, R.: A new method for deriving glacier centerlines applied to glaciers in Alaska and northwest Canada, The Cryosphere, 8, 503–519, https://doi.org/10.5194/tc-8-503-2014, 2014.
