@@ -1,6 +1,14 @@
-# Valley Centerline
+# Valley Axis
 
 Implementation of glacier centerline extraction algorithm from [Kienholz et al. (2014)](https://tc.copernicus.org/articles/8/503/2014/).
+
+![Example](./img/example.png)
+
+## TODO
+
+- [ ] Add option to remove inlets points that are not on the valley floor
+- [ ] Add option to remove inlets points that are not near any boundary
+- [ ] Allow for multiple outlets
 
 ## Installation
 
@@ -20,9 +28,9 @@ from valleyaxis.channel_nodes import find_channel_heads_and_outlets
 from valleyaxis import valley_centerlines
 
 # Load input data
-dem = rxr.open_rasterio("./data/conditioned_dem.tif", masked=True).squeeze()
-flowlines = gpd.read_file("./data/flowlines.shp")
-floor = gpd.read_file("./data/floor.shp").geometry.iloc[0]
+dem = rxr.open_rasterio("./sample_data/1805000202-dem.tif", masked=True).squeeze()
+flowlines = gpd.read_file("./sample_data/1805000202-flowlines.shp")
+floor = gpd.read_file("./sample_data/floor.shp").geometry[0]
 
 # Find channel heads and outlets from flowlines
 channel_nodes = find_channel_heads_and_outlets(flowlines)
@@ -33,12 +41,6 @@ inlets = channel_nodes.loc[channel_nodes["type"] == "inflow", "geometry"]
 
 # Extract centerlines
 centerline = valley_centerlines(dem, inlets, outlet, floor)
-
-# Visualize results
-fig, ax = plt.subplots()
-centerline.plot(ax=ax)
-gpd.GeoSeries([floor], crs=dem.rio.crs).plot(ax=ax, facecolor="none", edgecolor="black")
-plt.show()
 ```
 
 ## Input Data Requirements

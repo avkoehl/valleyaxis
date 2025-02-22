@@ -22,14 +22,14 @@ def find_channel_heads_and_outlets(flowlines_gdf):
     # Channel heads are startpoints that aren't endpoints of other lines
     # outlet points are endpoints that aren't startpoints of other lines
     results = []
-    for _, line in flowlines_gdf.iterrows():
+    for ind, line in flowlines_gdf.iterrows():
         start = tuple(line.geometry.coords[0])
         end = tuple(line.geometry.coords[-1])
         if start not in endpoints_set:
             result = {
                 "geometry": Point(start),
                 "type": "inflow",
-                "flowline_id": line["STRM_VAL"],
+                "flowline_id": ind,
             }
             results.append(result)
             continue
@@ -37,7 +37,7 @@ def find_channel_heads_and_outlets(flowlines_gdf):
             result = {
                 "geometry": Point(end),
                 "type": "outflow",
-                "flowline_id": line["STRM_VAL"],
+                "flowline_id": ind,
             }
             results.append(result)
 
