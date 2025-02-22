@@ -17,6 +17,7 @@ numba = "^0.61.0"
 numpy = "<2.2"
 rasterio = "^1.4.3"
 rioxarray = "^0.18.2"
+scikit-image = "^0.25.2"
 
 
 [tool.poetry.group.dev.dependencies]
