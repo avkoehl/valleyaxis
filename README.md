@@ -12,10 +12,23 @@ Implementation of glacier centerline extraction algorithm from [Kienholz et al. 
 
 ## Installation
 
+### Prerequisites
+
+- Python 3.10 or higher
+- [Poetry (package manager)](https://python-poetry.org/)
+
+### Installing from Github
+
+1. Clone the repository
 ```bash
-pip install valleyaxis
+git clone git@github.com:avkoehl/valleyaxis.git
+cd valleyaxis
 ```
 
+2. Install dependencies using Poetry
+```bash
+poetry install
+```
 ## Usage
 
 Here's a complete example showing how to extract valley centerlines:
