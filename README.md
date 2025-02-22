@@ -8,6 +8,9 @@ Implementation of glacier centerline extraction algorithm from [Kienholz et al. 
 
 - [ ] Add option to remove inlets points that are not on the valley floor
 - [ ] Add option to remove inlets points that are not near any boundary
+- [ ] Add option to close holes before computing centerline
+- [ ] Change results format to be gpd.GeoSeries[LineString]
+- [ ] Compute some metrics: length (float in meters), stream order (int of strahler order), mainstem (bool)
 - [ ] Allow for multiple outlets
 
 ## Installation
