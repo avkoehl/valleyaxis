@@ -14,7 +14,7 @@ scipy = "^1.15.1"
 tqdm = "^4.67.1"
 numpy = "<2.2"
 rasterio = "^1.4.3"
-rioxarray = "^0.18.2"
+rioxarray = ">=0.17.0"
 scikit-image = ">=0.24.0,<0.26.0"
 
 
