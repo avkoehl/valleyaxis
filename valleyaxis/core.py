@@ -64,6 +64,7 @@ def valley_centerlines(
     out_row, out_col = transform.rowcol(outlet_point.x, outlet_point.y)
 
     # Process each inflow point
+    seg_label = 1
     for inflow in tqdm(inflow_points):
         row, col = transform.rowcol(inflow.x, inflow.y)
 
@@ -74,8 +75,24 @@ def valley_centerlines(
         path = mcp.traceback([out_row, out_col])
 
         # Mark path in results
+        known_labels = []
         for p in path:
-            results[p[0], p[1]] = 1
+            val = results[p[0], p[1]].item()
+            if val == 0:
+                results[p[0], p[1]] = seg_label
+                continue
+
+            # if pixel is already labeled, then we have passed a junction
+            # and we need to label the path with a new segment label
+            # we need to increment the segment label
+            # but only if the pixel is labeled with an unknown segment
+            if val != seg_label:
+                if val not in known_labels:
+                    known_labels.append(val)
+                    seg_label += 1
+                results[p[0], p[1]] = seg_label
+
+        seg_label += 1
 
     return results
 
