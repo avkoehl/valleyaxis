@@ -6,6 +6,7 @@ from shapely.geometry import Point, Polygon
 from skimage.graph import MCP_Geometric
 import xarray as xr
 from tqdm import tqdm
+import numba
 
 
 def valley_centerlines(
@@ -63,38 +64,69 @@ def valley_centerlines(
     transform = rasterio.transform.AffineTransformer(penalty.rio.transform())
     out_row, out_col = transform.rowcol(outlet_point.x, outlet_point.y)
 
-    # Process each inflow point
-    seg_label = 1
+    # getpaths from each inflow point to outlet point
+    paths = []
+    inflow_nodes = []
     for inflow in tqdm(inflow_points):
         row, col = transform.rowcol(inflow.x, inflow.y)
-
-        # Find least cost path
+        inflow_nodes.append((row, col))
         costs, traceback = mcp.find_costs(
             starts=[[row, col]], ends=[[out_row, out_col]]
         )
         path = mcp.traceback([out_row, out_col])
+        paths.append(path)
 
-        # Mark path in results
-        known_labels = []
-        for p in path:
-            val = results[p[0], p[1]].item()
-            if val == 0:
-                results[p[0], p[1]] = seg_label
-                continue
+    # now need to trace the paths from the inflow to the outlet, mark when passing a junction
+    # mark edge between inflow -> junction and and between any junctions and with outlet
+    sorted_paths = sorted(paths, key=len, reverse=True)
+    j = find_junctions(sorted_paths, penalty.shape)
+    # give each junction a unique id
+    junc_id = 1
+    for junc in j:
+        results[junc] = junc_id
+        junc_id += 1
 
-            # if pixel is already labeled, then we have passed a junction
-            # and we need to label the path with a new segment label
-            # we need to increment the segment label
-            # but only if the pixel is labeled with an unknown segment
-            if val != seg_label:
-                if val not in known_labels:
-                    known_labels.append(val)
-                    seg_label += 1
-                results[p[0], p[1]] = seg_label
+    # create graph from the paths
+    # from each inflow AND junction, find path to next junction or outlet
+    # that gets labeled after the junction or inflow node that starts it
+    # make a linestring
+    flattend_paths = [elem]
 
-        seg_label += 1
-
+    for path in paths:
+        for pixel in path:
+            if pixel in inflow_nodes:
+                results[pixel] = 2
+            if pixel in junctions:
+                results[pixel] = 3
+            if pixel == (out_row, out_col):
+                results[pixel] = 4
+            else:
+                results[pixel] = 1
     return results
+
+
+def label_skeleton(sorted_paths, shape):
+    skeleton = np.zeros(shape, dtype=np.int32)
+    for path in sorted_paths:
+        for pixel in path:
+            if skeleton[pixel] == 0:
+                skeleton[pixel] = 1
+    return skeleton
+
+
+def find_junctions(sorted_paths, shape):
+    visited = np.zeros(shape, dtype=np.int32)
+    junctions = []
+    for path in sorted_paths:
+        count = 0
+        for pixel in path:
+            count += 1
+            if visited[pixel] == 0:
+                visited[pixel] = 1
+            else:
+                junctions.append(pixel)
+                break
+    return junctions
 
 
 def _create_penalty_surface(
