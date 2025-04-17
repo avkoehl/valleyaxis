@@ -6,12 +6,10 @@ Implementation of glacier centerline extraction algorithm from [Kienholz et al. 
 
 ## TODO
 
-- [ ] Add option to remove inlets points that are not on the valley floor
+- [ ] Remove any detected inlets points that are not on the valley floor
 - [ ] Add option to remove inlets points that are not near any boundary
-- [ ] Add option to close holes before computing centerline
-- [ ] Change results format to be gpd.GeoSeries[LineString]
-- [ ] Compute some metrics: length (float in meters), stream order (int of strahler order), mainstem (bool)
-- [ ] Allow for multiple outlets
+- [ ] add smoothing to centerlines
+- [ ] add width calculations
 
 ## Installation
 
@@ -32,6 +30,13 @@ cd valleyaxis
 ```bash
 poetry install
 ```
+
+## Input Data Requirements
+
+- **DEM**: Digital elevation model 
+- **Flowlines**: GeoDataFrame of linestrings 
+- **Valley Floor**: Polygon of valley floor extent
+
 ## Usage
 
 Here's a complete example showing how to extract valley centerlines:
@@ -40,32 +45,13 @@ Here's a complete example showing how to extract valley centerlines:
 import matplotlib.pyplot as plt
 import geopandas as gpd
 import rioxarray as rxr
-from valleyaxis.channel_nodes import find_channel_heads_and_outlets
-from valleyaxis import valley_centerlines
 
 # Load input data
 dem = rxr.open_rasterio("./sample_data/1805000202-dem.tif", masked=True).squeeze()
 flowlines = gpd.read_file("./sample_data/1805000202-flowlines.shp")
-floor = gpd.read_file("./sample_data/floor.shp").geometry[0]
-
-# Find channel heads and outlets from flowlines
-channel_nodes = find_channel_heads_and_outlets(flowlines)
-outlet = channel_nodes.loc[
-    channel_nodes[channel_nodes["type"] == "outflow"].index[0], "geometry"
-]
-inlets = channel_nodes.loc[channel_nodes["type"] == "inflow", "geometry"]
-
-# Extract centerlines
-centerline = valley_centerlines(dem, inlets, outlet, floor)
+floor = gpd.read_file("./sample_data/floor.shp").geometry[0].buffer(0.01) 
+centerlines = valley_centerlines(dem, flowlines, floor, maxarea=0)
 ```
-
-## Input Data Requirements
-
-- **DEM**: Digital elevation model (GeoTIFF)
-- **Valley Floor**: Polygon shapefile of valley floor extent
-- **Channel Points**: Either:
-  - Provide inlet and outlet points directly
-  - Or provide flowlines to automatically extract channel heads and outlets
 
 ## References
 

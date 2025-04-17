@@ -1,5 +1,27 @@
+import networkx as nx
 from shapely.geometry import Point
 import geopandas as gpd
+
+from valleyaxis.utils.network import lines_to_network
+
+
+def split_flowlines(flowlines):
+    graph = lines_to_network(flowlines)
+
+    outlets = [node for node in graph.nodes() if graph.out_degree(node) == 0]
+    if len(outlets) == 1:
+        return flowlines
+
+    flowlines["network_id"] = None
+    for i, outlet in enumerate(outlets):
+        upstream = nx.ancestors(graph, outlet)
+        upstream.add(outlet)
+        subgraph = graph.subgraph(upstream)
+        streams = list(
+            set(data["streamID"] for u, v, data in subgraph.edges(data=True))
+        )
+        flowlines.loc[streams, "network_id"] = i
+    return flowlines
 
 
 def find_channel_heads_and_outlets(flowlines_gdf):
@@ -40,5 +62,5 @@ def find_channel_heads_and_outlets(flowlines_gdf):
                 "flowline_id": ind,
             }
             results.append(result)
-
-    return gpd.GeoDataFrame(results, crs=flowlines_gdf.crs)
+    results = gpd.GeoDataFrame(results, crs=flowlines_gdf.crs)
+    return results

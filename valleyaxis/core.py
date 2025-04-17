@@ -9,8 +9,58 @@ import xarray as xr
 from tqdm import tqdm
 import networkx as nx
 
+from valleyaxis.utils.subgraphs import split_flowlines
+from valleyaxis.utils.subgraphs import find_channel_heads_and_outlets
+from valleyaxis.utils.strahler import compute_stream_order
+from valleyaxis.utils.geom import remove_holes
+
+
+def check_inputs(dem, flowlines, floor):
+    # dem is rioxarray raster
+    if not isinstance(dem, xr.DataArray):
+        raise ValueError("dem must be a rioxarray raster")
+    # flowlines is gpd.GeoDataFrame of linestrings
+    if not isinstance(flowlines, gpd.GeoDataFrame):
+        raise ValueError("flowlines must be a geopandas GeoDataFrame")
+
+    if not all(flowlines.geometry.geom_type == "LineString"):
+        raise ValueError("flowlines must be a GeoDataFrame of LineStrings")
+
+    # floor is a single polygon
+    if not isinstance(floor, Polygon):
+        raise ValueError("floor must be a single Shapely Polygon")
+
+    # dem and flowlines must have the same CRS
+    if dem.rio.crs != flowlines.crs:
+        raise ValueError("dem and flowlines must have the same CRS")
+
 
 def valley_centerlines(
+    dem, flowlines, floor, f1=1000, a=4.25, f2=3000, b=3.5, maxarea=None
+):
+    check_inputs(dem, flowlines, floor)
+    flowlines = split_flowlines(flowlines)
+    floor = remove_holes(floor, maxarea=maxarea)
+
+    results = []
+    for network_id, lines in flowlines.groupby("network_id"):
+        channel_nodes = find_channel_heads_and_outlets(lines)
+        if sum(channel_nodes["type"] == "outflow") != 1:
+            raise ValueError("There must be exactly one outlet point in the flowlines.")
+
+        outlet = channel_nodes.loc[
+            channel_nodes[channel_nodes["type"] == "outflow"].index[0], "geometry"
+        ]
+        inflow_points = channel_nodes.loc[channel_nodes["type"] == "inflow", "geometry"]
+        centerlines = _centerlines(dem, inflow_points, outlet, floor, f1, a, f2, b)
+        centerlines = compute_stream_order(centerlines)
+        centerlines["network_id"] = network_id
+        results.append(centerlines)
+    centerlines = pd.concat(results, ignore_index=True)
+    return centerlines
+
+
+def _centerlines(
     dem: xr.DataArray,
     inflow_points: gpd.GeoSeries,
     outlet_point: Point,
