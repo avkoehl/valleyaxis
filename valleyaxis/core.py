@@ -1,12 +1,13 @@
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rasterio
 from scipy.ndimage import distance_transform_edt
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, LineString
 from skimage.graph import MCP_Geometric
 import xarray as xr
 from tqdm import tqdm
-import numba
+import networkx as nx
 
 
 def valley_centerlines(
@@ -18,7 +19,7 @@ def valley_centerlines(
     a: float = 4.25,
     f2: float = 3000,
     b: float = 3.5,
-) -> np.ndarray:
+) -> gpd.GeoSeries:
     """
     Extract valley centerlines using a cost-distance approach.
 
@@ -43,8 +44,8 @@ def valley_centerlines(
 
     Returns
     -------
-    np.ndarray
-        Binary array where 1 indicates centerline pixels
+    gpd.GeoSeries[LineString]
+        Series of valley centerlines as Shapely LineString
 
     References
     ----------
@@ -52,81 +53,100 @@ def valley_centerlines(
     """
     # Create penalty surface
     penalty = _create_penalty_surface(dem, floor, f1, a, f2, b)
-
-    # Initialize MCP calculator
     mcp = MCP_Geometric(penalty.data)
 
-    # Initialize results array
-    results = penalty.copy()
-    results.data = np.zeros_like(penalty.data, dtype=np.int32)
-
-    # Convert outlet coordinates to array indices
+    # convert inflow points and outlet point to pixel coordinates
     transform = rasterio.transform.AffineTransformer(penalty.rio.transform())
     out_row, out_col = transform.rowcol(outlet_point.x, outlet_point.y)
+    inlet_cells = []
+    for point in inflow_points:
+        row, col = transform.rowcol(point.x, point.y)
+        inlet_cells.append((row, col))
 
-    # getpaths from each inflow point to outlet point
+    # create segments
+    paths = trace_paths(mcp, inlet_cells, out_row, out_col)
+    graph = paths_to_nxdigraph(paths)
+    segments = graph_segments(graph)
+    lines = segments_to_linestrings(segments, transform, dem.rio.crs)
+    return lines
+
+
+def trace_paths(mcp, inlet_cells, out_row, out_col):
     paths = []
-    inflow_nodes = []
-    for inflow in tqdm(inflow_points):
-        row, col = transform.rowcol(inflow.x, inflow.y)
-        inflow_nodes.append((row, col))
+    for row, col in tqdm(inlet_cells):
         costs, traceback = mcp.find_costs(
             starts=[[row, col]], ends=[[out_row, out_col]]
         )
         path = mcp.traceback([out_row, out_col])
         paths.append(path)
-
-    # now need to trace the paths from the inflow to the outlet, mark when passing a junction
-    # mark edge between inflow -> junction and and between any junctions and with outlet
     sorted_paths = sorted(paths, key=len, reverse=True)
-    j = find_junctions(sorted_paths, penalty.shape)
-    # give each junction a unique id
-    junc_id = 1
-    for junc in j:
-        results[junc] = junc_id
-        junc_id += 1
+    return sorted_paths
 
-    # create graph from the paths
-    # from each inflow AND junction, find path to next junction or outlet
-    # that gets labeled after the junction or inflow node that starts it
-    # make a linestring
-    flattend_paths = [elem]
 
+def paths_to_nxdigraph(paths):
+    G = nx.DiGraph()
     for path in paths:
-        for pixel in path:
-            if pixel in inflow_nodes:
-                results[pixel] = 2
-            if pixel in junctions:
-                results[pixel] = 3
-            if pixel == (out_row, out_col):
-                results[pixel] = 4
-            else:
-                results[pixel] = 1
-    return results
+        for i in range(len(path) - 1):
+            G.add_edge(path[i], path[i + 1])
+
+    # identify junctions, inflow points, and outlet points
+    for node in G.nodes():
+        # inflow nodes
+        if G.in_degree(node) == 0 and G.out_degree(node) > 0:
+            G.nodes[node]["inflow"] = True
+
+        # junction
+        if G.in_degree(node) > 1 and G.out_degree(node) > 0:
+            G.nodes[node]["junction"] = True
+
+        # outlet
+        if G.in_degree(node) > 0 and G.out_degree(node) == 0:
+            G.nodes[node]["outlet"] = True
+
+    return G
 
 
-def label_skeleton(sorted_paths, shape):
-    skeleton = np.zeros(shape, dtype=np.int32)
-    for path in sorted_paths:
-        for pixel in path:
-            if skeleton[pixel] == 0:
-                skeleton[pixel] = 1
-    return skeleton
+def graph_segments(G):
+    # flowline is from inflow to junction, or, junction to junction, or junction to outlet, or inflow to outlet
+    # start nodes are all nodes with inflow is True or junction is True
+    start_nodes = [
+        n for n, d in G.nodes(data=True) if d.get("inflow") or d.get("junction")
+    ]
+
+    segments = []
+    for start in start_nodes:
+        if G.out_degree(start) == 0:
+            continue
+
+        # start new segment
+        segment = [start]
+        current = list(G.successors(start))[0]  # only one out edge
+
+        while (current not in start_nodes) and (G.out_degree(current) > 0):
+            segment.append(current)
+            current = list(G.successors(current))[0]
+        segment.append(current)  # add the last node (junction or outlet)
+        segments.append(segment)
+    return segments
 
 
-def find_junctions(sorted_paths, shape):
-    visited = np.zeros(shape, dtype=np.int32)
-    junctions = []
-    for path in sorted_paths:
-        count = 0
-        for pixel in path:
-            count += 1
-            if visited[pixel] == 0:
-                visited[pixel] = 1
-            else:
-                junctions.append(pixel)
-                break
-    return junctions
+def segments_to_linestrings(segments, transform, crs):
+    records = []
+    for i, segment in enumerate(segments):
+        coords = []
+        for pixel in segment:
+            x, y = transform.xy(pixel[0], pixel[1])
+            coords.append((x, y))
+        line = LineString(coords)
+        records.append(
+            {
+                "ID": i,
+                "geometry": line,
+            }
+        )
+    gdf = pd.DataFrame.from_records(records)
+    gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs=crs)
+    return gdf
 
 
 def _create_penalty_surface(
