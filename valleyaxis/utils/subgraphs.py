@@ -10,6 +10,7 @@ def split_flowlines(flowlines):
 
     outlets = [node for node in graph.nodes() if graph.out_degree(node) == 0]
     if len(outlets) == 1:
+        flowlines["network_id"] = 1
         return flowlines
 
     flowlines["network_id"] = None
