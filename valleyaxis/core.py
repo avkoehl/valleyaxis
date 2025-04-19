@@ -8,6 +8,7 @@ from skimage.graph import MCP_Geometric
 import xarray as xr
 from tqdm import tqdm
 import networkx as nx
+from shapelysmooth import taubin_smooth
 
 from valleyaxis.utils.subgraphs import split_flowlines
 from valleyaxis.utils.subgraphs import find_channel_heads_and_outlets
@@ -36,7 +37,15 @@ def check_inputs(dem, flowlines, floor):
 
 
 def valley_centerlines(
-    dem, flowlines, floor, f1=1000, a=4.25, f2=3000, b=3.5, maxarea=None
+    dem,
+    flowlines,
+    floor,
+    f1=1000,
+    a=4.25,
+    f2=3000,
+    b=3.5,
+    maxarea=None,
+    smooth_output=True,
 ):
     check_inputs(dem, flowlines, floor)
     flowlines = split_flowlines(flowlines)
@@ -56,7 +65,11 @@ def valley_centerlines(
         centerlines = compute_stream_order(centerlines)
         centerlines["network_id"] = network_id
         results.append(centerlines)
+
     centerlines = pd.concat(results, ignore_index=True)
+    if smooth_output:
+        centerlines["geometry"] = centerlines.geometry.apply(lambda x: taubin_smooth(x))
+
     return centerlines
 
 
@@ -196,6 +209,7 @@ def segments_to_linestrings(segments, transform, crs):
         )
     gdf = pd.DataFrame.from_records(records)
     gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs=crs)
+
     return gdf
 
 

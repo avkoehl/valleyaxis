@@ -33,7 +33,3 @@ def remove_holes(polygon, maxarea=None):
 
     holes = [hole for hole in polygon.interiors if hole.area <= maxarea]
     return Polygon(polygon.exterior.coords, holes=holes)
-
-
-def smooth_centerline():
-    pass
