@@ -9,6 +9,7 @@ import xarray as xr
 from tqdm import tqdm
 import networkx as nx
 from shapelysmooth import taubin_smooth
+from shapelysmooth import chaikin_smooth
 
 from valleyaxis.utils.subgraphs import split_flowlines
 from valleyaxis.utils.subgraphs import find_channel_heads_and_outlets
@@ -68,7 +69,9 @@ def valley_centerlines(
 
     centerlines = pd.concat(results, ignore_index=True)
     if smooth_output:
-        centerlines["geometry"] = centerlines.geometry.apply(lambda x: taubin_smooth(x))
+        centerlines["geometry"] = centerlines.geometry.apply(
+            lambda x: chaikin_smooth(taubin_smooth(x))
+        )
 
     return centerlines
 
