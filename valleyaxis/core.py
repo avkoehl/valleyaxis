@@ -149,6 +149,11 @@ def trace_paths(mcp, inlet_cells, out_row, out_col):
     return sorted_paths
 
 
+def allocate_basins(mcp, start_cells):
+    # start cells are the centerline points ?
+    pass
+
+
 def paths_to_nxdigraph(paths):
     G = nx.DiGraph()
     for path in paths:

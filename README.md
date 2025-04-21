@@ -8,8 +8,6 @@ Implementation of glacier centerline extraction algorithm from [Kienholz et al. 
 
 - [ ] Remove any detected inlets points that are not on the valley floor
 - [ ] Add option to remove inlets points that are not near any boundary
-- [ ] add smoothing to centerlines
-- [ ] add width calculations
 
 ## Installation
 
