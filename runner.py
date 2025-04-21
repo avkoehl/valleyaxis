@@ -8,3 +8,6 @@ flowlines = gpd.read_file("./sample_data/1805000202-flowlines.shp")
 floor = gpd.read_file("./sample_data/floor.shp").geometry[0].buffer(0.01)
 
 centerlines = valley_centerlines(dem, flowlines, floor)
+
+gpd.GeoSeries(floor).to_file("floor.gpkg", driver="GPKG")
+centerlines.to_file("centerlines.gpkg", driver="GPKG")

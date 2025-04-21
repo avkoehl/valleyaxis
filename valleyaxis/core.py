@@ -52,6 +52,9 @@ def valley_centerlines(
     flowlines = split_flowlines(flowlines)
     floor = remove_holes(floor, maxarea=maxarea)
 
+    penalty = _create_penalty_surface(dem, floor, f1, a, f2, b)
+    mcp = MCP_Geometric(penalty.data)
+
     results = []
     for network_id, lines in flowlines.groupby("network_id"):
         channel_nodes = find_channel_heads_and_outlets(lines)
@@ -62,12 +65,14 @@ def valley_centerlines(
             channel_nodes[channel_nodes["type"] == "outflow"].index[0], "geometry"
         ]
         inflow_points = channel_nodes.loc[channel_nodes["type"] == "inflow", "geometry"]
-        centerlines = _centerlines(dem, inflow_points, outlet, floor, f1, a, f2, b)
+        centerlines = _centerlines(mcp, penalty, inflow_points, outlet)
         centerlines = compute_stream_order(centerlines)
         centerlines["network_id"] = network_id
         results.append(centerlines)
 
     centerlines = pd.concat(results, ignore_index=True)
+    centerlines["ID"] = np.arange(len(centerlines)) + 1
+
     if smooth_output:
         centerlines["geometry"] = centerlines.geometry.apply(
             lambda x: chaikin_smooth(taubin_smooth(x))
@@ -77,48 +82,17 @@ def valley_centerlines(
 
 
 def _centerlines(
-    dem: xr.DataArray,
+    mcp,
+    penalty,
     inflow_points: gpd.GeoSeries,
     outlet_point: Point,
-    floor: Polygon,
-    f1: float = 1000,
-    a: float = 4.25,
-    f2: float = 3000,
-    b: float = 3.5,
-) -> gpd.GeoSeries:
+) -> gpd.GeoDataFrame:
     """
-    Extract valley centerlines using a cost-distance approach.
-
-    Parameters
-    ----------
-    dem : Union[xr.DataArray, str]
-        Digital elevation model as xarray DataArray or path to GeoTIFF
-    inflow_points : gpd.GeoSeries[Point]
-        Series of inflow points
-    outlet_point : Point
-        Outlet point
-    floor : Polygon
-        Valley floor polygon as Shapely Polygon or GeoDataFrame
-    f1 : float, optional
-        Distance penalty factor, by default 1000
-    a : float, optional
-        Distance penalty exponent, by default 4.25
-    f2 : float, optional
-        Elevation penalty factor, by default 3000
-    b : float, optional
-        Elevation penalty exponent, by default 3.5
-
     Returns
     -------
-    gpd.GeoSeries[LineString]
-        Series of valley centerlines as Shapely LineString
-
-    References
-    ----------
-    Kienholz et al. (2014) - https://tc.copernicus.org/articles/8/503/2014/
+    gpd.GeoDataFrame[LineString]
+        geodataframe of valley centerlines as Shapely LineString
     """
-    # Create penalty surface
-    penalty = _create_penalty_surface(dem, floor, f1, a, f2, b)
     mcp = MCP_Geometric(penalty.data)
 
     # convert inflow points and outlet point to pixel coordinates
@@ -133,7 +107,7 @@ def _centerlines(
     paths = trace_paths(mcp, inlet_cells, out_row, out_col)
     graph = paths_to_nxdigraph(paths)
     segments = graph_segments(graph)
-    lines = segments_to_linestrings(segments, transform, dem.rio.crs)
+    lines = segments_to_linestrings(segments, transform, penalty.rio.crs)
     return lines
 
 
@@ -147,11 +121,6 @@ def trace_paths(mcp, inlet_cells, out_row, out_col):
         paths.append(path)
     sorted_paths = sorted(paths, key=len, reverse=True)
     return sorted_paths
-
-
-def allocate_basins(mcp, start_cells):
-    # start cells are the centerline points ?
-    pass
 
 
 def paths_to_nxdigraph(paths):
@@ -244,7 +213,7 @@ def _create_penalty_surface(
         Combined penalty surface
     """
     # Clip DEM to valley floor
-    clipped_dem = dem.rio.clip([floor])
+    clipped_dem = dem.rio.clip([floor], drop=False)
 
     # Create mask of valid pixels
     polygon_mask = np.zeros_like(clipped_dem)
