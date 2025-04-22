@@ -55,7 +55,6 @@ def find_channel_heads_and_outlets(flowlines_gdf):
                 "flowline_id": ind,
             }
             results.append(result)
-            continue
         if end not in startpoints_set:
             result = {
                 "geometry": Point(end),
