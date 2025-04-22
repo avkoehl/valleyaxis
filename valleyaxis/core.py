@@ -81,6 +81,28 @@ def valley_centerlines(
     return centerlines
 
 
+def process_channel_nodes(channel_nodes_df, floor, dist_to_boundary_threshold=None):
+    # remove any points that are not in the valley floor polygon
+    channel_nodes_df = channel_nodes_df[floor.contains(channel_nodes_df.geometry)]
+
+    if dist_to_boundary_threshold is not None:
+        # remove any points that are not close to the valley floor polygon boundary
+        channel_nodes_df = channel_nodes_df[
+            channel_nodes_df.geometry.distance(floor) < dist_to_boundary_threshold
+        ]
+
+    # confirm atleast one inflow and one outflow point
+    if channel_nodes_df["type"].value_counts().get("inflow", 0) == 0:
+        raise ValueError(
+            "No inflow points found in the channel nodes after processing."
+        )
+    if channel_nodes_df["type"].value_counts().get("outflow", 0) == 0:
+        raise ValueError(
+            "No outflow points found in the channel nodes after processing."
+        )
+    return channel_nodes_df
+
+
 def _centerlines(
     mcp,
     penalty,
