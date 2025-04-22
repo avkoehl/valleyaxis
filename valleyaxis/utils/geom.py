@@ -2,6 +2,7 @@ import numpy as np
 import rasterio
 from shapely.geometry import Polygon
 import geopandas as gpd
+from warnings import warn as warning
 
 
 def floor_raster_to_polygon(raster_file):
@@ -24,7 +25,14 @@ def floor_raster_to_polygon(raster_file):
     if isinstance(polygon, Polygon):
         return polygon
     else:
-        raise ValueError("Unable to create a single polygon from raster data.")
+        # if returns multipolygon, explode it and return list of polygons
+        if polygon.geom_type == "MultiPolygon":
+            polygons = [poly for poly in polygon.geoms if poly.is_valid]
+            if len(polygons) == 1:
+                return polygons[0]
+            else:
+                warning("More than one polygon found, returning list of polygons")
+                return polygons
 
 
 def remove_holes(polygon, maxarea=None):
