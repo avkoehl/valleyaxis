@@ -18,7 +18,13 @@ def floor_raster_to_polygon(raster_file):
         polygons = []
         for shape, value in rasterio.features.shapes(image, transform=transform):
             if value == 1:
-                polygons.append(Polygon(shape["coordinates"][0]))
+                exterior = shape["coordinates"][0]
+                if len(shape["coordinates"]) > 1:
+                    interior = shape["coordinates"][1:]
+                else:
+                    interior = []
+
+                polygons.append(Polygon(exterior, interior))
 
     df = gpd.GeoDataFrame(polygons, columns=["geometry"], crs=crs)
     polygon = df.union_all().buffer(0.01)
